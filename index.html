@@ -578,6 +578,7 @@ footer p{max-width:62ch;margin:10px auto 0}
     <a href="#features">Highlights</a>
     <a href="#more">Payment &amp; details</a>
     <a href="#tour">Request a tour</a>
+    <a href="#" data-video>Property video</a>
     <a class="ext" href="https://www.google.com/maps/dir/?api=1&amp;destination=1425+Foothills+Village+Dr%2C+Henderson%2C+NV+89012" target="_blank" rel="noopener">Directions ↗</a>
     <a class="ext" href="https://www.redfin.com/NV/Henderson/1425-Foothills-Village-Dr-89012/home/29007805" target="_blank" rel="noopener">Full listing &amp; all photos ↗</a>
   </nav>
@@ -592,7 +593,15 @@ footer p{max-width:62ch;margin:10px auto 0}
   </div>
 
   <div class="hero">
-    <img class="hero-img" src="media/hero.jpg" alt="Front of 1425 Foothills Village Drive at dusk">
+    <video id="heroVid" autoplay muted playsinline preload="auto" poster="media/poster.jpg" aria-label="Front of 1425 Foothills Village Drive, dusk turning to day">
+      <source src="media/hero.mp4" type="video/mp4">
+    </video>
+    <img id="duskFrame" class="dusk" src="media/dusk.jpg" alt="" aria-hidden="true">
+    <img id="dayFrame" class="dusk day" src="media/day.jpg" alt="" aria-hidden="true">
+    <div class="vbtn">
+      <button class="chip" id="pauseBtn" aria-label="Pause background video">Pause</button>
+      <button class="chip" data-video><svg width="12" height="12"><use href="#i-play"/></svg>With sound</button>
+    </div>
   </div>
 
   <div class="wrap">
@@ -605,6 +614,7 @@ footer p{max-width:62ch;margin:10px auto 0}
     <div class="ctas">
       <a class="btn" href="#tour" data-focus-form>Request a private tour <svg width="22" height="22"><use href="#i-arrow"/></svg></a>
       <a class="btn ghost" href="tel:+13013351579"><svg width="20" height="20"><use href="#i-phone"/></svg>Call Brian · <span class="tel">301-335-1579</span></a>
+      <button class="play" data-video><i><svg width="16" height="16"><use href="#i-play"/></svg></i><span class="caps">Watch property video</span></button>
     </div>
   </div>
 </section>
@@ -786,7 +796,10 @@ footer p{max-width:62ch;margin:10px auto 0}
   <a href="#tour" data-focus-form><svg width="24" height="24"><use href="#i-cal"/></svg>Request tour</a>
 </nav>
 
-
+<div class="modal" id="vModal" hidden role="dialog" aria-label="Property video">
+  <button class="x" data-close aria-label="Close video">&times;</button>
+  <video id="tourVid" controls playsinline preload="none" poster="media/poster.jpg"><source src="media/tour.mp4" type="video/mp4"></video>
+</div>
 <div class="modal" id="lb" hidden role="dialog" aria-label="Photo viewer">
   <button class="x" data-close aria-label="Close photo">&times;</button>
   <button class="nav prev" id="lbPrev" aria-label="Previous photo">‹</button>
@@ -810,6 +823,40 @@ footer p{max-width:62ch;margin:10px auto 0}
   // Focus form when a tour CTA is used
   $$('[data-focus-form]').forEach(a=>a.addEventListener('click',()=>setTimeout(()=>$('#fName').focus({preventScroll:true}),500)));
 
+  // Hero pause
+  const hv=$('#heroVid'),pb=$('#pauseBtn');
+  const slow=()=>{hv.defaultPlaybackRate=0.5;hv.playbackRate=0.5};
+  slow();['loadedmetadata','play','playing'].forEach(ev=>hv.addEventListener(ev,slow));
+  // End-of-loop sequence:
+  //   video ends on dusk -> hold dusk 5s -> dusk blends into the daytime photo (2.5s)
+  //   -> daytime photo holds 4s -> video restarts underneath and the photo fades away (1.5s)
+  const HOLD_DUSK=5000, FADE_TO_DAY=2500, HOLD_DAY=4000;
+  const dusk=$('#duskFrame'), day=$('#dayFrame');
+  let timers=[],userPaused=false;
+  const later=(fn,ms)=>timers.push(setTimeout(()=>{if(!userPaused)fn()},ms));
+  const clearTimers=()=>{timers.forEach(clearTimeout);timers=[]};
+  const snap=(el,on)=>{el.classList.add('snap');el.classList.toggle('on',on);void el.offsetWidth;el.classList.remove('snap')};
+  function restartVideo(){
+    hv.currentTime=0;
+    hv.addEventListener('seeked',function go(){
+      hv.removeEventListener('seeked',go);
+      hv.play().catch(()=>{});
+      snap(dusk,false);                         // hidden under the day photo, so no visible change
+      requestAnimationFrame(()=>requestAnimationFrame(()=>{day.classList.add('out');day.classList.remove('on')}));
+    });
+  }
+  hv.addEventListener('ended',()=>{
+    clearTimers();
+    day.classList.remove('out'); snap(day,false);
+    snap(dusk,true);                            // still matches the last frame exactly
+    later(()=>day.classList.add('on'),HOLD_DUSK);
+    later(restartVideo,HOLD_DUSK+FADE_TO_DAY+HOLD_DAY);
+  });
+  pb.onclick=()=>{
+    if(hv.paused){userPaused=false;clearTimers();if(hv.ended){day.classList.add('on');later(restartVideo,1200)}else{hv.play()}pb.textContent='Pause'}
+    else{userPaused=true;clearTimers();hv.pause();pb.textContent='Play'}
+  };
+  if(matchMedia('(prefers-reduced-motion: reduce)').matches){hv.removeAttribute('autoplay');hv.pause();pb.textContent='Play'}
 
   // Modals
   const open=m=>{m.hidden=false;document.body.style.overflow='hidden'};
@@ -817,6 +864,7 @@ footer p{max-width:62ch;margin:10px auto 0}
   $$('.modal').forEach(m=>m.addEventListener('click',e=>{if(e.target===m||e.target.closest('[data-close]'))close(m)}));
   document.addEventListener('keydown',e=>{if(e.key==='Escape'){$$('.modal').forEach(m=>!m.hidden&&close(m));setMenu(false)}
     if(!$('#lb').hidden){if(e.key==='ArrowRight')show(cur+1);if(e.key==='ArrowLeft')show(cur-1)}});
+  $$('[data-video]').forEach(b=>b.addEventListener('click',e=>{e.preventDefault();setMenu(false);open($('#vModal'));const v=$('#tourVid');v.currentTime=0;v.play().catch(()=>{})}));
 
   // Lightbox
   const photos=[["media/backyard.jpg", "Backyard · pool, spa, BBQ & putting green"], ["media/primary.jpg", "Primary suite with balcony & fireplace"], ["media/front.jpg", "Front at dusk"]];
